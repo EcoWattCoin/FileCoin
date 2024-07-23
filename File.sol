@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-// SafeMath from OpenZeppelin: Utility library for safe mathematical operations to prevent overflows and underflows.
 library SafeMath {
     /**
      * @dev Adds two unsigned integers, returns the result, reverts on overflow.
@@ -43,7 +42,6 @@ library SafeMath {
     }
 }
 
-// Context.sol: Abstract contract that provides information about the current execution context.
 abstract contract Context {
     /**
      * @dev Returns the address of the current caller.
@@ -60,7 +58,6 @@ abstract contract Context {
     }
 }
 
-// IERC20.sol: Interface for the ERC20 standard.
 interface IERC20 {
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(address indexed owner, address indexed spender, uint256 value);
@@ -73,29 +70,25 @@ interface IERC20 {
     function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
 }
 
-// IERC20Metadata.sol: Interface for additional ERC20 metadata functions.
 interface IERC20Metadata is IERC20 {
     function name() external view returns (string memory);
     function symbol() external view returns (string memory);
     function decimals() external view returns (uint8);
 }
 
-// ERC20.sol: Implementation of the ERC20 standard with basic functionalities.
 contract ERC20 is Context, IERC20, IERC20Metadata {
     using SafeMath for uint256;
 
-    // Mappings to store balances and allowances.
     mapping(address => uint256) private balances;
     mapping(address => mapping(address => uint256)) private allowances;
 
-    // State variables for total supply, name, and symbol of the token.
     uint256 private _totalSupply;
     string private _name;
     string private _symbol;
 
-    // Constants for token name and symbol.
     string private constant TOKEN_NAME = "EcoWattCoin";
-    string private constant TOKEN_SYMBOL = "EWC";
+    string private constant TOKEN_SYMBOL = "EWTC"; // Alterado para EWTC
+    uint256 public constant MAX_SUPPLY = 1000000000 * 10**18; // Definido aqui
 
     /**
      * @dev Sets the values for {name} and {symbol}.
@@ -238,7 +231,7 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
      */
     function _mint(address account, uint256 amount) internal virtual {
         require(account != address(0), "ERC20: mint to the zero address");
-        require(_totalSupply + amount <= 10000000 * 10**decimals(), "ERC20: minting exceeds max supply");
+        require(_totalSupply.add(amount) <= MAX_SUPPLY, "ERC20: minting exceeds max supply");
 
         _totalSupply = _totalSupply.add(amount);
         balances[account] = balances[account].add(amount);
@@ -259,7 +252,6 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
     }
 }
 
-// Ownable.sol: Provides basic authorization control functions, simplifying the implementation of user permissions.
 abstract contract Ownable is Context {
     address private _owner;
     address private _secondaryOwner;
@@ -267,76 +259,49 @@ abstract contract Ownable is Context {
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
     event SecondaryOwnerSet(address indexed previousSecondaryOwner, address indexed newSecondaryOwner);
 
-    /**
-     * @dev Initializes the contract setting the deployer as the initial owner.
-     */
     constructor(address initialOwner) {
         require(initialOwner != address(0), "Ownable: initial owner is the zero address");
-        require(initialOwner != _msgSender(), "Ownable: initial owner is the same as deployer");
         _transferOwnership(initialOwner);
     }
 
-    /**
-     * @dev Returns the address of the current owner.
-     */
     function owner() public view virtual returns (address) {
         return _owner;
     }
 
-    /**
-     * @dev Returns the address of the current secondary owner.
-     */
     function secondaryOwner() public view virtual returns (address) {
         return _secondaryOwner;
     }
 
-    /**
-     * @dev Throws if called by any account other than the owner.
-     */
     modifier onlyOwner() {
         require(owner() == _msgSender(), "Ownable: caller is not the owner");
         _;
     }
 
-    /**
-     * @dev Throws if called by any account other than the owner or secondary owner.
-     */
     modifier onlyOwnerOrSecondary() {
         require(_msgSender() == owner() || _msgSender() == _secondaryOwner, "Ownable: caller is not the owner or secondary owner");
         _;
     }
 
-    /**
-     * @dev Transfers ownership of the contract to a new account (`newOwner`).
-     */
     function transferOwnership(address newOwner) public virtual onlyOwner {
         require(newOwner != address(0), "Ownable: new owner is the zero address");
         require(newOwner != _msgSender(), "Ownable: new owner is the same as current owner");
         _transferOwnership(newOwner);
     }
 
-    /**
-     * @dev Sets a secondary owner.
-     */
     function setSecondaryOwner(address newOwner) public onlyOwner {
         require(newOwner != address(0), "Ownable: new secondary owner is the zero address");
         require(newOwner != owner(), "Ownable: new secondary owner is the same as the current owner");
+        require(newOwner != _secondaryOwner, "Ownable: new secondary owner is the same as the current secondary owner");
         emit SecondaryOwnerSet(_secondaryOwner, newOwner);
         _secondaryOwner = newOwner;
     }
 
-    /**
-     * @dev Revokes the secondary owner.
-     */
     function revokeSecondaryOwner() public onlyOwner {
         require(_secondaryOwner != address(0), "Ownable: secondary owner is not set");
         emit SecondaryOwnerSet(_secondaryOwner, address(0));
         _secondaryOwner = address(0);
     }
 
-    /**
-     * @dev Transfers ownership of the contract to a new account (`newOwner`).
-     */
     function _transferOwnership(address newOwner) internal virtual {
         address oldOwner = _owner;
         _owner = newOwner;
@@ -344,7 +309,6 @@ abstract contract Ownable is Context {
     }
 }
 
-// ReentrancyGuard.sol: Helps prevent reentrant calls to a function.
 abstract contract ReentrancyGuard {
     uint256 private _status;
 
@@ -360,7 +324,6 @@ abstract contract ReentrancyGuard {
     }
 }
 
-// Pausable.sol: Allows children to implement an emergency stop mechanism that can be triggered by an authorized account.
 abstract contract Pausable is Context {
     event Paused(address account);
     event Unpaused(address account);
@@ -371,51 +334,35 @@ abstract contract Pausable is Context {
         _paused = false;
     }
 
-    /**
-     * @dev Returns true if the contract is paused, and false otherwise.
-     */
     function paused() public view virtual returns (bool) {
         return _paused;
     }
 
-    /**
-     * @dev Modifier to make a function callable only when the contract is not paused.
-     */
     modifier whenNotPaused() {
         require(!paused(), "Pausable: paused");
         _;
     }
 
-    /**
-     * @dev Modifier to make a function callable only when the contract is paused.
-     */
     modifier whenPaused() {
         require(paused(), "Pausable: not paused");
         _;
     }
 
-    /**
-     * @dev Triggers stopped state.
-     */
     function _pause() internal virtual whenNotPaused {
         _paused = true;
         emit Paused(_msgSender());
     }
 
-    /**
-     * @dev Returns to normal state.
-     */
     function _unpause() internal virtual whenPaused {
         _paused = false;
         emit Unpaused(_msgSender());
     }
 }
 
-// Timelock.sol: Implements a delay mechanism for specific actions.
 abstract contract Timelock {
     using SafeMath for uint256;
 
-    uint256 private constant _DELAY = 24 hours;
+    uint256 private constant _DELAY = 1 minutes;
     mapping(bytes32 => uint256) private _timelock;
 
     event ActionQueued(bytes32 indexed actionId, uint256 timestamp);
@@ -446,23 +393,26 @@ abstract contract Timelock {
     }
 }
 
-// RoleBasedAccessControl.sol: Implements role-based access control for minters and burners.
 abstract contract RoleBasedAccessControl is Context {
     mapping(address => bool) private _minters;
     mapping(address => bool) private _burners;
-    address private _admin;
+    mapping(address => bool) private _admins;
+    uint256 private _adminCount;
 
     event MinterAdded(address indexed account);
     event MinterRemoved(address indexed account);
     event BurnerAdded(address indexed account);
     event BurnerRemoved(address indexed account);
+    event AdminAdded(address indexed account);
+    event AdminRemoved(address indexed account);
 
     constructor() {
-        _admin = _msgSender();
+        _admins[_msgSender()] = true;
+        _adminCount = 1;
     }
 
     modifier onlyAdmin() {
-        require(_msgSender() == _admin, "RoleBasedAccessControl: caller is not the admin");
+        require(isAdmin(_msgSender()), "RoleBasedAccessControl: caller is not an admin");
         _;
     }
 
@@ -509,79 +459,31 @@ abstract contract RoleBasedAccessControl is Context {
     function isBurner(address account) public view returns (bool) {
         return _burners[account];
     }
-}
 
-// MultisigVault.sol: Contract to manage multi-signature vaults.
-contract MultisigVault {
-    struct TransactionData {
-        address proposer;
-        bytes32 actionId;
-        bytes data;
+    function addAdmin(address account) public onlyAdmin {
+        require(account != address(0), "RoleBasedAccessControl: admin is the zero address");
+        require(!isAdmin(account), "RoleBasedAccessControl: account is already an admin");
+        _admins[account] = true;
+        _adminCount++;
+        emit AdminAdded(account);
     }
 
-    struct Transaction {
-        TransactionData transactionData;
-        mapping(address => bool) approvals;
-        uint256 approvalCount;
+    function removeAdmin(address account) public onlyAdmin {
+        require(isAdmin(account), "RoleBasedAccessControl: account is not an admin");
+        require(_adminCount > 1, "RoleBasedAccessControl: cannot remove the last admin");
+        _admins[account] = false;
+        _adminCount--;
+        emit AdminRemoved(account);
     }
 
-    mapping(bytes32 => TransactionData) public transactionData;
-    mapping(bytes32 => Transaction) public transactions;
-    mapping(address => bool) public signatories;
-    uint256 public requiredSignatures;
-
-    event TransactionProposed(bytes32 actionId, address proposer);
-    event TransactionApproved(bytes32 actionId, address approver);
-    event TransactionExecuted(bytes32 actionId);
-
-    constructor(address[] memory _signatories, uint256 _requiredSignatures) {
-        require(_requiredSignatures > 0 && _requiredSignatures <= _signatories.length, "Invalid required signatures");
-
-        for (uint256 i = 0; i < _signatories.length; i++) {
-            signatories[_signatories[i]] = true;
-        }
-
-        requiredSignatures = _requiredSignatures;
-    }
-
-    function proposeTransaction(bytes32 actionId, bytes memory data) external {
-        require(signatories[msg.sender], "Only signatories can propose transactions");
-
-        bytes32 transactionId = keccak256(abi.encodePacked(actionId, data));
-        require(transactionData[transactionId].proposer == address(0), "Transaction already proposed");
-
-        transactionData[transactionId] = TransactionData(msg.sender, actionId, data);
-        transactions[transactionId].transactionData = transactionData[transactionId];
-
-        emit TransactionProposed(actionId, msg.sender);
-    }
-
-    function approveTransaction(bytes32 actionId) external {
-        require(signatories[msg.sender], "Only signatories can approve transactions");
-
-        bytes32 transactionId = keccak256(abi.encodePacked(actionId));
-        Transaction storage transaction = transactions[transactionId];
-        require(transaction.transactionData.proposer != address(0), "Transaction not found");
-        require(!transaction.approvals[msg.sender], "Already approved");
-
-        transaction.approvals[msg.sender] = true;
-        transaction.approvalCount++;
-
-        emit TransactionApproved(actionId, msg.sender);
-
-        if (transaction.approvalCount >= requiredSignatures) {
-            (bool success, ) = address(this).call(transaction.transactionData.data);
-            require(success, "Transaction execution failed");
-            emit TransactionExecuted(actionId);
-        }
+    function isAdmin(address account) public view returns (bool) {
+        return _admins[account];
     }
 }
 
-// EcoWattCoin.sol: Main contract implementing ERC20 with Ownable, ReentrancyGuard, Pausable, Timelock, RoleBasedAccessControl, and MultisigVault.
-contract EcoWattCoin is ERC20, Ownable, ReentrancyGuard, Pausable, Timelock, RoleBasedAccessControl, MultisigVault {
+contract EcoWattCoin is ERC20, Ownable, ReentrancyGuard, Pausable, Timelock, RoleBasedAccessControl {
     using SafeMath for uint256;
 
-    uint256 public constant MAX_SUPPLY = 1000000000 * 10**18;
     uint256 private constant INITIAL_SUPPLY = 10000000 * 10**18;
     address private constant ZERO_ADDRESS = address(0);
 
@@ -609,11 +511,7 @@ contract EcoWattCoin is ERC20, Ownable, ReentrancyGuard, Pausable, Timelock, Rol
     /**
      * @dev Initializes the contract by minting the initial supply to the deployer.
      */
-    constructor(address[] memory signatories, uint256 requiredSignatures, address initialOwner)
-        ERC20()
-        Ownable(initialOwner)
-        MultisigVault(signatories, requiredSignatures)
-    {
+    constructor(address initialOwner) ERC20() Ownable(initialOwner) {
         require(INITIAL_SUPPLY <= MAX_SUPPLY, "Initial supply exceeds max supply");
         _mint(initialOwner, INITIAL_SUPPLY);
     }
@@ -622,8 +520,6 @@ contract EcoWattCoin is ERC20, Ownable, ReentrancyGuard, Pausable, Timelock, Rol
      * @dev Transfers `amount` tokens to `recipient`, with non-reentrancy and when not paused checks.
      */
     function transfer(address recipient, uint256 amount) public virtual override nonReentrant whenNotPaused returns (bool) {
-        require(recipient != address(0), "ERC20: transfer to the zero address");
-        require(amount > 0, "ERC20: transfer amount must be greater than zero");
         return super.transfer(recipient, amount);
     }
 
@@ -631,9 +527,6 @@ contract EcoWattCoin is ERC20, Ownable, ReentrancyGuard, Pausable, Timelock, Rol
      * @dev Transfers `amount` tokens from `sender` to `recipient`, with non-reentrancy and when not paused checks.
      */
     function transferFrom(address sender, address recipient, uint256 amount) public virtual override nonReentrant whenNotPaused returns (bool) {
-        require(sender != address(0), "ERC20: transfer from the zero address");
-        require(recipient != address(0), "ERC20: transfer to the zero address");
-        require(amount > 0, "ERC20: transfer amount must be greater than zero");
         return super.transferFrom(sender, recipient, amount);
     }
 
