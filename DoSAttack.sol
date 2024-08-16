@@ -24,8 +24,8 @@ contract DoSAttack {
 }
 
 /**
-*Denial of Service (DoS) Attack:
-*Result: Failed
-*Details: The contract was tested for susceptibility to DoS attacks, where malicious actors might attempt to prevent legitimate users from interacting with the contract. 
-*The contract successfully handled all scenarios without succumbing to the attack.
-**/
+* Denial of Service (DoS) Attack:
+* Result: Failed
+* Details: The contract was tested for susceptibility to DoS attacks, where malicious actors might attempt to prevent legitimate users from interacting with the contract. 
+* The contract successfully handled all scenarios without succumbing to the attack.
+*/
