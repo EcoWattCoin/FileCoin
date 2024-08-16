@@ -196,6 +196,7 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
      */
     function approve(address spender, uint256 amount) public virtual override returns (bool) {
         require(spender != address(0), "ERC20: approve to the zero address");
+        require(amount <= totalSupply(), "ERC20: approve amount exceeds total supply");
 
         _approve(_msgSender(), spender, amount);
         return true;
@@ -220,10 +221,16 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
     /**
      * @dev Increases the allowance granted to `spender` by the caller.
      */
-    function increaseAllowance(address spender, uint256 addedValue) public virtual returns (bool) {
+    function increaseAllowance(address spender, uint256 addedValue) public returns (bool) {
         require(spender != address(0), "ERC20: approve to the zero address");
 
-        _approve(_msgSender(), spender, allowances[_msgSender()][spender].add(addedValue));
+        uint256 currentAllowance = allowances[_msgSender()][spender];
+        uint256 newAllowance = currentAllowance.add(addedValue);
+
+        // Checks that the new allowance does not exceed totalSupply
+        require(newAllowance <= totalSupply(), "ERC20: allowance exceeds total supply");
+
+        _approve(_msgSender(), spender, newAllowance);
         return true;
     }
 
@@ -399,6 +406,7 @@ abstract contract ReentrancyGuard {
 
 // Contract that allows children to implement an emergency stop mechanism
 abstract contract Pausable is Context {
+    
     /**
      * @dev Emitted when the pause is triggered by `account`.
      */
@@ -458,11 +466,12 @@ abstract contract Pausable is Context {
     }
 }
 
-// Contract that implements a timelock mechanism for certain actions
+// Contract that implements a timelock mechanism with expiration for certain actions
 abstract contract Timelock {
     using SafeMath for uint256;
 
-    uint256 private constant _DELAY = 60; // Number of blocks instead of minutes
+    uint256 private constant _DELAY = 20; // Delay in blocks before an action can be executed
+    uint256 private constant _EXPIRATION_DURATION = 20; // Additional blocks after which the action expires
     mapping(bytes32 => uint256) private _timelock;
 
     /**
@@ -481,29 +490,29 @@ abstract contract Timelock {
     event ActionCancelled(bytes32 indexed actionId);
 
     /**
-     * @dev Modifier to make a function callable only after the timelock period has passed.
+     * @dev Emitted when a queued action expires due to being unexecuted past the expiration duration.
+     */
+    event ActionExpired(bytes32 indexed actionId);
+
+    /**
+     * @dev Modifier to make a function callable only after the timelock period has passed and before it expires.
      */
     modifier timelocked(bytes32 actionId) {
-        require(_timelock[actionId] != 0, "Timelock: action not queued");
-        require(block.number >= _timelock[actionId], "Timelock: action locked");
+        uint256 unlockTime = _timelock[actionId];
+        require(unlockTime != 0, "Timelock: action not queued");
+        require(block.number >= unlockTime, "Timelock: action locked");
+        require(block.number <= unlockTime.add(_EXPIRATION_DURATION), "Timelock: action expired");
         _;
-        _timelock[actionId] = 0; // Reset the timelock
+        delete _timelock[actionId]; // Reset the timelock after execution
     }
 
     /**
      * @dev Queues an action with a delay in blocks before it can be executed.
      */
     function queueAction(bytes32 actionId) internal {
-        require(_timelock[actionId] == 0, "Timelock: action already queued");
+        require(_timelock[actionId] <= block.number, "Timelock: action already queued or still pending");
         _timelock[actionId] = block.number.add(_DELAY);
         emit ActionQueued(actionId, block.number);
-    }
-
-    /**
-     * @dev Returns the block number when the action can be executed.
-     */
-    function getTimelock(bytes32 actionId) public view returns (uint256) {
-        return _timelock[actionId];
     }
 
     /**
@@ -513,6 +522,17 @@ abstract contract Timelock {
         require(_timelock[actionId] != 0, "Timelock: action not queued");
         delete _timelock[actionId];
         emit ActionCancelled(actionId);
+    }
+
+    /**
+     * @dev Checks if a queued action has expired.
+     */
+    function checkExpiration(bytes32 actionId) public {
+        uint256 unlockTime = _timelock[actionId];
+        if (unlockTime != 0 && block.number > unlockTime.add(_EXPIRATION_DURATION)) {
+            delete _timelock[actionId];
+            emit ActionExpired(actionId);
+        }
     }
 }
 
@@ -673,24 +693,33 @@ abstract contract TimelockTransferOwnership is Ownable {
 
     address private _proposedOwner;
     uint256 private _ownershipTransferTimelock;
-    uint256 private constant _TRANSFER_DELAY_IN_BLOCKS = 60; // Number of blocks instead of minutes
+    uint256 private constant _TRANSFER_DELAY_IN_BLOCKS = 20; // Number of blocks delay before the transfer can be executed
+    uint256 private constant _EXPIRATION_DURATION = 20; // Number of blocks after which the transfer expires
 
     /**
-     * @dev Emitted when ownership transfer is initiated.
+     * @dev Emitted when an ownership transfer is initiated with a specified block number for execution.
      */
     event OwnershipTransferInitiated(address indexed currentOwner, address indexed proposedOwner, uint256 executionBlock);
 
     /**
-     * @dev Emitted when ownership transfer is cancelled.
+     * @dev Emitted when an ownership transfer is canceled.
      */
     event OwnershipTransferCancelled(address indexed currentOwner, address indexed proposedOwner);
 
     /**
-     * @dev Modifier to make a function callable only after the timelock period has passed.
+     * @dev Emitted when an ownership transfer expires without being executed.
+     */
+    event OwnershipTransferExpired(address indexed currentOwner, address indexed proposedOwner);
+
+    /**
+     * @dev Modifier that ensures the ownership transfer can only be executed after the timelock period has passed and before the action expires.
      */
     modifier onlyAfterTimelock() {
+        require(_ownershipTransferTimelock != 0, "Timelock: ownership transfer not queued");
         require(block.number >= _ownershipTransferTimelock, "Timelock: ownership transfer still locked");
+        require(block.number <= _ownershipTransferTimelock.add(_EXPIRATION_DURATION), "Timelock: ownership transfer expired");
         _;
+        delete _ownershipTransferTimelock; // Reset the timelock after execution
     }
 
     /**
@@ -699,19 +728,21 @@ abstract contract TimelockTransferOwnership is Ownable {
     function initiateOwnershipTransfer(address newOwner) public onlyOwner {
         require(newOwner != address(0), "TimelockTransferOwnership: new owner is the zero address");
         require(newOwner != owner(), "TimelockTransferOwnership: new owner must be different from current owner");
+        require(newOwner != secondaryOwner(), "TimelockTransferOwnership: new owner cannot be the current secondary owner");
+        require(_ownershipTransferTimelock <= block.number, "Timelock: previous ownership transfer still pending or active");
+
         _proposedOwner = newOwner;
         _ownershipTransferTimelock = block.number.add(_TRANSFER_DELAY_IN_BLOCKS);
         emit OwnershipTransferInitiated(owner(), newOwner, _ownershipTransferTimelock);
     }
 
     /**
-     * @dev Executes the ownership transfer after the timelock has passed.
+     * @dev Executes the ownership transfer after the timelock has passed, provided the transfer has not expired.
      */
     function executeOwnershipTransfer() public onlyOwner onlyAfterTimelock {
         require(_proposedOwner != address(0), "TimelockTransferOwnership: no owner proposed");
         _transferOwnership(_proposedOwner);
-        _proposedOwner = address(0); // Reset proposed owner after transfer
-        _ownershipTransferTimelock = 0; // Reset timelock
+        _proposedOwner = address(0); // Reset the proposed owner after the transfer
     }
 
     /**
@@ -726,7 +757,19 @@ abstract contract TimelockTransferOwnership is Ownable {
     }
 
     /**
-     * @dev Returns the proposed owner address.
+     * @dev Checks if the ownership transfer has expired and automatically cancels it if expired.
+     */
+    function checkOwnershipTransferExpiration() public {
+        if (_ownershipTransferTimelock != 0 && block.number > _ownershipTransferTimelock.add(_EXPIRATION_DURATION)) {
+            address expiredOwner = _proposedOwner;
+            _proposedOwner = address(0);
+            _ownershipTransferTimelock = 0;
+            emit OwnershipTransferExpired(owner(), expiredOwner);
+        }
+    }
+
+    /**
+     * @dev Returns the address of the proposed owner.
      */
     function proposedOwner() public view returns (address) {
         return _proposedOwner;
@@ -749,7 +792,7 @@ contract EcoWattCoin is ERC20, Ownable, ReentrancyGuard, Pausable, Timelock, Rol
 
     uint256 private _actionCounter;
     bool private _actionPending; // New state variable to track if an action is pending
-    uint256 private _nonBurnableSupply; // New variable to track the non-burnable supply
+    uint256 private immutable _nonBurnableSupply; // Updated to be immutable as suggested
 
     /**
      * @dev Emitted when tokens are minted.
@@ -787,7 +830,7 @@ contract EcoWattCoin is ERC20, Ownable, ReentrancyGuard, Pausable, Timelock, Rol
     constructor(address initialOwner) ERC20() Ownable(initialOwner) {
         require(INITIAL_SUPPLY <= MAX_SUPPLY, "Initial supply exceeds max supply");
         _mint(initialOwner, INITIAL_SUPPLY);
-        _nonBurnableSupply = INITIAL_SUPPLY; // Set the non-burnable supply to the initial supply
+        _nonBurnableSupply = INITIAL_SUPPLY; // Set the non-burnable supply to the initial supply and mark it as immutable
         _actionPending = false; // Initialize the actionPending flag as false
     }
 
@@ -812,14 +855,18 @@ contract EcoWattCoin is ERC20, Ownable, ReentrancyGuard, Pausable, Timelock, Rol
         require(to != ZERO_ADDRESS, "ERC20: mint to the zero address");
         require(amount > 0, "ERC20: mint amount must be greater than zero");
         require(totalSupply().add(amount) <= MAX_SUPPLY, "ERC20: minting exceeds max supply");
-        require(!_actionPending, "ERC20: another action is already pending");
+    
+        // Redefine o estado `_actionPending` se necessário
+        if (!_actionPending) {
+            _actionPending = true; // Set the actionPending flag to true
 
-        _actionPending = true; // Set the actionPending flag to true
-
-        uint256 blockNumber = block.number;
-        bytes32 actionId = keccak256(abi.encodePacked("mint", to, amount, blockNumber, _actionCounter++));
-        _mintActions[actionId] = MintAction(to, amount, blockNumber);
-        queueAction(actionId);
+            uint256 blockNumber = block.number;
+            bytes32 actionId = keccak256(abi.encodePacked("mint", to, amount, blockNumber, _actionCounter++));
+            _mintActions[actionId] = MintAction(to, amount, blockNumber);
+            queueAction(actionId);
+        } else {
+            revert("ERC20: another action is already pending");
+        }
     }
 
     /**
@@ -914,8 +961,17 @@ contract EcoWattCoin is ERC20, Ownable, ReentrancyGuard, Pausable, Timelock, Rol
     }
 
     /**
-     * @dev Withdraws ERC20 tokens from the contract to the owner's address.
+     * @dev Withdraws Ether from the contract to the owner's address.
      */
+    function withdrawEther() external onlyOwner {
+        uint256 balance = address(this).balance;
+        require(balance > 0, "Contract has no Ether");
+        payable(owner()).transfer(balance);
+    }
+
+    /**
+     * @dev Withdraws ERC20 tokens from the contract to the owner's address.
+     */     
     function withdrawToken(address tokenAddress) external onlyOwner {
         IERC20 token = IERC20(tokenAddress);
         uint256 tokenBalance = token.balanceOf(address(this));
